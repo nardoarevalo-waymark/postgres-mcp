@@ -57,5 +57,13 @@ EXPOSE 8000
 # Users can pass a database URI or individual connection arguments:
 #   docker run -it --rm postgres-mcp postgres://user:pass@host:port/dbname
 #   docker run -it --rm postgres-mcp -h myhost -p 5432 -U myuser -d mydb
+#
+# Tool identifier can be set via environment variable or command line:
+#   docker run -e TOOL_IDENTIFIER=nardos_ postgres-mcp postgres://...
+#   docker run postgres-mcp postgres://... --tool-identifier custom_
+#
+# Multiple instances with different identifiers:
+#   docker run -e TOOL_IDENTIFIER=prod_ postgres-mcp postgresql://...
+#   docker run -e TOOL_IDENTIFIER=staging_ postgres-mcp postgresql://...
 ENTRYPOINT ["/app/docker-entrypoint.sh", "postgres-mcp"]
 CMD []

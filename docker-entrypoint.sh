@@ -88,6 +88,21 @@ if [[ "$has_sse" == true ]] && [[ "$has_sse_host" == false ]]; then
     processed_args+=("--sse-host=0.0.0.0")
 fi
 
+# Check if TOOL_IDENTIFIER is set and --tool-identifier is not already provided
+has_tool_identifier=false
+for arg in "${processed_args[@]}"; do
+    if [[ "$arg" == "--tool-identifier"* ]]; then
+        has_tool_identifier=true
+        break
+    fi
+done
+
+# Add --tool-identifier if TOOL_IDENTIFIER env var is set and not already specified
+if [[ -n "$TOOL_IDENTIFIER" ]] && [[ "$has_tool_identifier" == false ]]; then
+    echo "TOOL_IDENTIFIER environment variable detected, adding --tool-identifier=$TOOL_IDENTIFIER" >&2
+    processed_args+=("--tool-identifier=$TOOL_IDENTIFIER")
+fi
+
 echo "----------------" >&2
 echo "Executing command:" >&2
 echo "${processed_args[@]}" >&2

@@ -10,6 +10,7 @@ from typing import Any
 from typing import List
 from typing import Literal
 from typing import Union
+from urllib.parse import urlparse
 
 import mcp.types as types
 from mcp.server.fastmcp import FastMCP
@@ -39,6 +40,9 @@ mcp = FastMCP("postgres-mcp")
 # Constants
 PG_STAT_STATEMENTS = "pg_stat_statements"
 HYPOPG_EXTENSION = "hypopg"
+
+# Global variable for tool identifier
+tool_identifier = ""
 
 ResponseType = List[types.TextContent | types.ImageContent | types.EmbeddedResource]
 
@@ -80,7 +84,95 @@ def format_error_response(error: str) -> ResponseType:
     return format_text_response(f"Error: {error}")
 
 
-@mcp.tool(description="List all schemas in the database")
+def extract_hostname_from_db_url(database_url: str) -> str:
+    """Extract hostname from database URL and format it as a tool identifier."""
+    try:
+        parsed = urlparse(database_url)
+        hostname = parsed.hostname
+        if hostname:
+            # Clean hostname for use as identifier: replace dots and dashes with underscores
+            clean_hostname = hostname.replace(".", "_").replace("-", "_")
+            return f"{clean_hostname}_"
+        return ""
+    except Exception:
+        return ""
+
+
+def get_tool_name(base_name: str) -> str:
+    """Generate a tool name with the configured identifier prefix."""
+    if tool_identifier:
+        return f"{tool_identifier}{base_name}"
+    return base_name
+
+
+def register_tools():
+    """Register all MCP tools with their dynamic names."""
+    # Register all tools with their prefixed names
+    mcp.add_tool(
+        list_schemas,
+        name=get_tool_name("list_schemas"),
+        description="List all schemas in the database"
+    )
+    
+    mcp.add_tool(
+        list_objects,
+        name=get_tool_name("list_objects"),
+        description="List objects in a schema"
+    )
+    
+    mcp.add_tool(
+        get_object_details,
+        name=get_tool_name("get_object_details"),
+        description="Show detailed information about a database object"
+    )
+    
+    mcp.add_tool(
+        explain_query,
+        name=get_tool_name("explain_query"),
+        description="Explains the execution plan for a SQL query, showing how the database will execute it and provides detailed cost estimates."
+    )
+    
+    mcp.add_tool(
+        analyze_workload_indexes,
+        name=get_tool_name("analyze_workload_indexes"),
+        description="Analyze frequently executed queries in the database and recommend optimal indexes"
+    )
+    
+    mcp.add_tool(
+        analyze_query_indexes,
+        name=get_tool_name("analyze_query_indexes"),
+        description="Analyze a list of (up to 10) SQL queries and recommend optimal indexes"
+    )
+    
+    mcp.add_tool(
+        analyze_db_health,
+        name=get_tool_name("analyze_db_health"),
+        description="Analyzes database health. Here are the available health checks:\n"
+        "- index - checks for invalid, duplicate, and bloated indexes\n"
+        "- connection - checks the number of connection and their utilization\n"
+        "- vacuum - checks vacuum health for transaction id wraparound\n"
+        "- sequence - checks sequences at risk of exceeding their maximum value\n"
+        "- replication - checks replication health including lag and slots\n"
+        "- buffer - checks for buffer cache hit rates for indexes and tables\n"
+        "- constraint - checks for invalid constraints\n"
+        "- all - runs all checks\n"
+        "You can optionally specify a single health check or a comma-separated list of health checks. The default is 'all' checks."
+    )
+    
+    mcp.add_tool(
+        get_top_queries,
+        name=get_tool_name("get_top_queries"),
+        description=f"Reports the slowest or most resource-intensive queries using data from the '{PG_STAT_STATEMENTS}' extension."
+    )
+    
+    # Add the execute_sql tool with a description appropriate to the access mode
+    if current_access_mode == AccessMode.UNRESTRICTED:
+        mcp.add_tool(execute_sql, name=get_tool_name("execute_sql"), description="Execute any SQL query")
+    else:
+        mcp.add_tool(execute_sql, name=get_tool_name("execute_sql"), description="Execute a read-only SQL query")
+
+
+# Remove decorator - will be added dynamically
 async def list_schemas() -> ResponseType:
     """List all schemas in the database."""
     try:
@@ -106,7 +198,7 @@ async def list_schemas() -> ResponseType:
         return format_error_response(str(e))
 
 
-@mcp.tool(description="List objects in a schema")
+# Remove decorator - will be added dynamically
 async def list_objects(
     schema_name: str = Field(description="Schema name"),
     object_type: str = Field(description="Object type: 'table', 'view', 'sequence', or 'extension'", default="table"),
@@ -174,7 +266,7 @@ async def list_objects(
         return format_error_response(str(e))
 
 
-@mcp.tool(description="Show detailed information about a database object")
+# Remove decorator - will be added dynamically
 async def get_object_details(
     schema_name: str = Field(description="Schema name"),
     object_name: str = Field(description="Object name"),
@@ -307,7 +399,7 @@ async def get_object_details(
         return format_error_response(str(e))
 
 
-@mcp.tool(description="Explains the execution plan for a SQL query, showing how the database will execute it and provides detailed cost estimates.")
+# Remove decorator - will be added dynamically
 async def explain_query(
     sql: str = Field(description="SQL query to explain"),
     analyze: bool = Field(
@@ -402,7 +494,7 @@ async def execute_sql(
         return format_error_response(str(e))
 
 
-@mcp.tool(description="Analyze frequently executed queries in the database and recommend optimal indexes")
+# Remove decorator - will be added dynamically
 @validate_call
 async def analyze_workload_indexes(
     max_index_size_mb: int = Field(description="Max index size in MB", default=10000),
@@ -423,7 +515,7 @@ async def analyze_workload_indexes(
         return format_error_response(str(e))
 
 
-@mcp.tool(description="Analyze a list of (up to 10) SQL queries and recommend optimal indexes")
+# Remove decorator - will be added dynamically
 @validate_call
 async def analyze_query_indexes(
     queries: list[str] = Field(description="List of Query strings to analyze"),
@@ -450,18 +542,7 @@ async def analyze_query_indexes(
         return format_error_response(str(e))
 
 
-@mcp.tool(
-    description="Analyzes database health. Here are the available health checks:\n"
-    "- index - checks for invalid, duplicate, and bloated indexes\n"
-    "- connection - checks the number of connection and their utilization\n"
-    "- vacuum - checks vacuum health for transaction id wraparound\n"
-    "- sequence - checks sequences at risk of exceeding their maximum value\n"
-    "- replication - checks replication health including lag and slots\n"
-    "- buffer - checks for buffer cache hit rates for indexes and tables\n"
-    "- constraint - checks for invalid constraints\n"
-    "- all - runs all checks\n"
-    "You can optionally specify a single health check or a comma-separated list of health checks. The default is 'all' checks."
-)
+# Remove decorator - will be added dynamically
 async def analyze_db_health(
     health_type: str = Field(
         description=f"Optional. Valid values are: {', '.join(sorted([t.value for t in HealthType]))}.",
@@ -479,10 +560,7 @@ async def analyze_db_health(
     return format_text_response(result)
 
 
-@mcp.tool(
-    name="get_top_queries",
-    description=f"Reports the slowest or most resource-intensive queries using data from the '{PG_STAT_STATEMENTS}' extension.",
-)
+# Remove decorator - will be added dynamically
 async def get_top_queries(
     sort_by: str = Field(
         description="Ranking criteria: 'total_time' for total execution time or 'mean_time' for mean execution time per call, or 'resources' "
@@ -539,23 +617,38 @@ async def main():
         default=8000,
         help="Port for SSE server (default: 8000)",
     )
+    parser.add_argument(
+        "--tool-identifier",
+        type=str,
+        default="",
+        help="Unique identifier prefix for tool names (e.g., 'db1_' for database 1)",
+    )
 
     args = parser.parse_args()
 
-    # Store the access mode in the global variable
-    global current_access_mode
+    # Store the access mode in global variable
+    global current_access_mode, tool_identifier
     current_access_mode = AccessMode(args.access_mode)
-
-    # Add the query tool with a description appropriate to the access mode
-    if current_access_mode == AccessMode.UNRESTRICTED:
-        mcp.add_tool(execute_sql, description="Execute any SQL query")
-    else:
-        mcp.add_tool(execute_sql, description="Execute a read-only SQL query")
-
-    logger.info(f"Starting PostgreSQL MCP Server in {current_access_mode.upper()} mode")
 
     # Get database URL from environment variable or command line
     database_url = os.environ.get("DATABASE_URI", args.database_url)
+
+    # Set tool identifier: use provided value or extract from database URL hostname
+    if args.tool_identifier:
+        tool_identifier = args.tool_identifier
+    elif database_url:
+        tool_identifier = extract_hostname_from_db_url(database_url)
+    else:
+        tool_identifier = ""
+
+    # Register all tools with their dynamic names
+    register_tools()
+
+    logger.info(f"Starting PostgreSQL MCP Server in {current_access_mode.upper()} mode")
+    if tool_identifier:
+        logger.info(f"Using tool identifier prefix: '{tool_identifier}'")
+    else:
+        logger.info("No tool identifier prefix configured")
 
     if not database_url:
         raise ValueError(
