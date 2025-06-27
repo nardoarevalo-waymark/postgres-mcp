@@ -1,11 +1,15 @@
 # ruff: noqa: B008
 import argparse
 import asyncio
+import csv
+import json
 import logging
 import os
 import signal
 import sys
+from datetime import datetime
 from enum import Enum
+from pathlib import Path
 from typing import Any
 from typing import List
 from typing import Literal
@@ -60,6 +64,9 @@ class AccessMode(str, Enum):
 db_connection = DbConnPool()
 current_access_mode = AccessMode.UNRESTRICTED
 shutdown_in_progress = False
+output_directory = None
+host_output_directory = None  # Host path for reporting to user
+result_row_limit = 100  # Default limit before writing to file
 
 
 async def get_sql_driver() -> Union[SqlDriver, SafeSqlDriver]:
@@ -103,6 +110,51 @@ def get_tool_name(base_name: str) -> str:
     if tool_identifier:
         return f"{tool_identifier}{base_name}"
     return base_name
+
+
+def generate_unique_filename(base_name: str = "query_results") -> str:
+    """Generate a unique filename with timestamp."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]  # Include milliseconds
+    return f"{base_name}_{timestamp}.csv"
+
+
+async def write_results_to_file(results: list, filename: str) -> bool:
+    """Write query results to a CSV file in the output directory."""
+    if not output_directory or not results:
+        return False
+    
+    try:
+        output_path = Path(output_directory)
+        output_path.mkdir(parents=True, exist_ok=True)
+        
+        file_path = output_path / filename
+        
+        # Get column names from the first row (assuming all rows have same structure)
+        if isinstance(results[0], dict):
+            column_names = list(results[0].keys())
+        else:
+            # If results are not dictionaries, create generic column names
+            column_names = [f"column_{i}" for i in range(len(results[0]))]
+        
+        with open(file_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=column_names)
+            writer.writeheader()
+            
+            for row in results:
+                if isinstance(row, dict):
+                    # Convert all values to strings to handle any data type
+                    row_data = {k: str(v) if v is not None else '' for k, v in row.items()}
+                    writer.writerow(row_data)
+                else:
+                    # Handle non-dict rows by creating a dict with generic column names
+                    row_data = {f"column_{i}": str(v) if v is not None else '' for i, v in enumerate(row)}
+                    writer.writerow(row_data)
+        
+        logger.info(f"Query results written to CSV: {file_path}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to write results to CSV file {filename}: {e}")
+        return False
 
 
 def register_tools():
@@ -488,7 +540,45 @@ async def execute_sql(
         rows = await sql_driver.execute_query(sql)  # type: ignore
         if rows is None:
             return format_text_response("No results")
-        return format_text_response(list([r.cells for r in rows]))
+        
+        results = [r.cells for r in rows]
+        
+        # Check if results exceed the row limit
+        if len(results) > result_row_limit:
+            # Generate unique filename and write full results to file
+            filename = generate_unique_filename("sql_query_results")
+            write_success = await write_results_to_file(results, filename)
+            
+            if write_success and output_directory:
+                # Return first N rows plus file info
+                preview_results = results[:result_row_limit]
+                # Use host path for user-facing response, fallback to container path
+                if host_output_directory:
+                    user_file_path = Path(host_output_directory) / filename
+                else:
+                    user_file_path = Path(output_directory) / filename
+                response_message = {
+                    "message": f"Query returned {len(results)} rows (limit: {result_row_limit}). Full results written to file.",
+                    "preview_rows": len(preview_results),
+                    "total_rows": len(results),
+                    "file_path": str(user_file_path),
+                    "preview_data": preview_results
+                }
+                return format_text_response(response_message)
+            else:
+                # Fallback: just return limited results if file writing failed
+                limited_results = results[:result_row_limit]
+                response_message = {
+                    "message": f"Query returned {len(results)} rows. Showing first {len(limited_results)} rows (file output disabled or failed).",
+                    "total_rows": len(results),
+                    "shown_rows": len(limited_results),
+                    "data": limited_results
+                }
+                return format_text_response(response_message)
+        else:
+            # Return all results normally
+            return format_text_response(results)
+            
     except Exception as e:
         logger.error(f"Error executing query: {e}")
         return format_error_response(str(e))
@@ -623,12 +713,33 @@ async def main():
         default="",
         help="Unique identifier prefix for tool names (e.g., 'db1_' for database 1)",
     )
+    parser.add_argument(
+        "--output-directory",
+        type=str,
+        default="",
+        help="Directory to write large query results to (e.g., '/app/output' for Docker volume)",
+    )
+    parser.add_argument(
+        "--result-row-limit",
+        type=int,
+        default=100,
+        help="Maximum number of rows to return directly (default: 100). Larger results are written to file.",
+    )
+    parser.add_argument(
+        "--host-output-directory",
+        type=str,
+        default="",
+        help="Host directory path to report to user (e.g., '/Users/user/Desktop/sqloutput' for the host path)",
+    )
 
     args = parser.parse_args()
 
     # Store the access mode in global variable
-    global current_access_mode, tool_identifier
+    global current_access_mode, tool_identifier, output_directory, host_output_directory, result_row_limit
     current_access_mode = AccessMode(args.access_mode)
+    output_directory = args.output_directory if args.output_directory else None
+    host_output_directory = args.host_output_directory if args.host_output_directory else output_directory
+    result_row_limit = args.result_row_limit
 
     # Get database URL from environment variable or command line
     database_url = os.environ.get("DATABASE_URI", args.database_url)
@@ -649,6 +760,13 @@ async def main():
         logger.info(f"Using tool identifier prefix: '{tool_identifier}'")
     else:
         logger.info("No tool identifier prefix configured")
+    
+    if output_directory:
+        logger.info(f"Large query results will be written to: {output_directory}")
+    else:
+        logger.info("No output directory configured - large results will be truncated")
+    
+    logger.info(f"Query result row limit: {result_row_limit}")
 
     if not database_url:
         raise ValueError(
