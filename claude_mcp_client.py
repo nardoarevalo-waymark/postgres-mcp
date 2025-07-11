@@ -155,6 +155,7 @@ class ClaudeMCPClient:
                 response = self.anthropic_client.messages.create(
                     model="claude-3-5-sonnet-20241022",
                     messages=messages,
+
                     tools=claude_tools if claude_tools else None,
                     max_tokens=4000
                 )
