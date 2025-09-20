@@ -945,13 +945,14 @@ class SafeSqlDriver(SqlDriver):
     def _validate(self, query: str) -> None:
         """Validate query is safe to execute"""
         try:
+            # Log the query being validated
+            logger.debug(f"Validating SQL query: {query[:200]}{'...' if len(query) > 200 else ''}")
+            
             # Parse the SQL using pglast
             parsed = pglast.parse_sql(query)
             # Pretty print the parsed SQL for debugging
-            # print("Parsed SQL:")
-            # import pprint
-            # pprint.pprint(parsed)
-
+            logger.debug("Successfully parsed SQL")
+            
             # Validate each statement
             try:
                 for stmt in parsed:
@@ -969,9 +970,12 @@ class SafeSqlDriver(SqlDriver):
                             )
                     self._validate_node(stmt)
             except Exception as e:
-                raise ValueError(f"Error validating query: {query}") from e
+                logger.error(f"Error during node validation: {e}")
+                raise ValueError(f"Error validating query: {query[:100]}...") from e
 
         except pglast.parser.ParseError as e:
+            logger.error(f"Failed to parse SQL statement. Query: {query[:200]}{'...' if len(query) > 200 else ''}")
+            logger.error(f"Parse error details: {str(e)}")
             raise ValueError("Failed to parse SQL statement") from e
 
     async def execute_query(

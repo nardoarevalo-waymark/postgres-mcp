@@ -536,6 +536,7 @@ async def execute_sql(
 ) -> ResponseType:
     """Executes a SQL query against the database."""
     try:
+        logger.info(f"execute_sql called with SQL: {sql[:200]}{'...' if len(sql) > 200 else ''}")
         sql_driver = await get_sql_driver()
         rows = await sql_driver.execute_query(sql)  # type: ignore
         if rows is None:
@@ -678,6 +679,12 @@ async def get_top_queries(
 
 
 async def main():
+    # Configure logging to DEBUG level to help diagnose issues
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="PostgreSQL MCP Server")
     parser.add_argument("database_url", help="Database connection URL", nargs="?")
@@ -691,9 +698,9 @@ async def main():
     parser.add_argument(
         "--transport",
         type=str,
-        choices=["stdio", "sse"],
+        choices=["stdio", "sse", "http"],
         default="stdio",
-        help="Select MCP transport: stdio (default) or sse",
+        help="Select MCP transport: stdio (default), sse, or http",
     )
     parser.add_argument(
         "--sse-host",
@@ -799,11 +806,18 @@ async def main():
     # Run the server with the selected transport (always async)
     if args.transport == "stdio":
         await mcp.run_stdio_async()
-    else:
-        # Update FastMCP settings based on command line arguments
+    elif args.transport == "sse":
+        # Update FastMCP settings for SSE transport
         mcp.settings.host = args.sse_host
         mcp.settings.port = args.sse_port
         await mcp.run_sse_async()
+    elif args.transport == "http":
+        # Update FastMCP settings for HTTP transport
+        mcp.settings.host = args.sse_host  # Use same host/port settings
+        mcp.settings.port = args.sse_port
+        logger.info(f"Starting streamable HTTP server on http://{args.sse_host}:{args.sse_port}/mcp")
+        await mcp.run_streamable_http_async()
+
 
 
 async def shutdown(sig=None):
