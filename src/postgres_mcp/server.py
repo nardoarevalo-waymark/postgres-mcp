@@ -41,6 +41,12 @@ from .top_queries import TopQueriesCalc
 # Initialize FastMCP with default settings
 mcp = FastMCP("postgres-mcp")
 
+# Add health endpoint for HTTP/SSE transports
+@mcp.custom_route(path="/health", methods=["GET"])
+async def health_check():
+    """Health check endpoint for monitoring."""
+    return {"status": "ok"}
+
 # Constants
 PG_STAT_STATEMENTS = "pg_stat_statements"
 HYPOPG_EXTENSION = "hypopg"

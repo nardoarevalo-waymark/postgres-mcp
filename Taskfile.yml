@@ -1,0 +1,46 @@
+version: '3'
+
+tasks:
+  deploy:
+    desc: Deploy postgres-mcp to Nomad
+    vars:
+      ENV: '{{.env | default "dev"}}'
+    cmds:
+      - |
+        source ~/.envs/hashistack-{{.ENV}}.sh
+        nomad job run \
+          -var "env={{.ENV}}" \
+          postgresmcp.nomad
+    preconditions:
+      - sh: test -f ~/.envs/hashistack-{{.ENV}}.sh
+        msg: "HashiStack environment file not found: ~/.envs/hashistack-{{.ENV}}.sh"
+      - sh: test -f postgresmcp.nomad
+        msg: "Nomad job file not found: postgresmcp.nomad"
+
+  deploy:dev:
+    desc: Deploy to dev environment
+    cmds:
+      - task: deploy
+        vars:
+          env: dev
+
+  deploy:qa:
+    desc: Deploy to QA environment
+    cmds:
+      - task: deploy
+        vars:
+          env: qa
+
+  deploy:stage:
+    desc: Deploy to staging environment
+    cmds:
+      - task: deploy
+        vars:
+          env: stage
+
+  deploy:prod:
+    desc: Deploy to production environment
+    cmds:
+      - task: deploy
+        vars:
+          env: prod

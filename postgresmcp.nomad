@@ -5,13 +5,13 @@ variable "env" {
 
 variable "image" {
   type    = string
-  default = "500948450342.dkr.ecr.us-east-1.amazonaws.com/postgres-mcp:latest"
+  default = "nardoarevalywaymark/postgres-mcp:v0.3.1"
 }
 
 variable "port" {
   type        = number
   description = "The internal port that postgres-mcp is running on."
-  default     = 3000
+  default     = 8000
 }
 
 variable "cpu" {
@@ -82,16 +82,21 @@ job "postgresmcp" {
       config {
         image = var.image
         ports = ["http"]
-        entrypoint = [
-          "uv", "run", "postgres-mcp"
+        args = [
+          "--access-mode=restricted",
+          "--output-directory=/app/output",
+          "--transport", "http",
+          "--sse-host", "0.0.0.0",
+          "--sse-port", "${var.port}"
         ]
       }
 
       template {
         data = <<-EOF
           ENV=${var.env}
+          TOOL_IDENTIFIER=core_
           {{ with secret "database/${var.env}/waymark-core/creds/ro-${var.env}_waymark-core-db" -}}
-          POSTGRES_MCP_DATABASE_URL=postgresql://{{ .Data.username }}:{{ .Data.password | toJSON }}@coredb${var.env == "prod" ? "-ro" : ""}.${var.env}.waymarkcare.in:5432/waymark-core-db
+          DATABASE_URI=postgresql://{{ .Data.username }}:{{ .Data.password | toJSON }}@coredb${var.env == "prod" ? "-ro" : ""}.${var.env}.waymarkcare.in:5432/waymark-core-db
           {{ end }}
         EOF
 
