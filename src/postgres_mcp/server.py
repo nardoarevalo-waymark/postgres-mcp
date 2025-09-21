@@ -42,11 +42,12 @@ from .top_queries import TopQueriesCalc
 mcp = FastMCP("postgres-mcp")
 
 # Add health endpoint for HTTP/SSE transports
+from starlette.responses import JSONResponse
+
 @mcp.custom_route(path="/health", methods=["GET"])
 async def health_check(request):
     """Health check endpoint for monitoring."""
-    print(request)
-    return {"status": "ok"}
+    return JSONResponse({"status": "ok"})
 
 # Constants
 PG_STAT_STATEMENTS = "pg_stat_statements"

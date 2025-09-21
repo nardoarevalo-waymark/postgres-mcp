@@ -5,7 +5,7 @@ variable "env" {
 
 variable "image" {
   type    = string
-  default = "nardoarevalywaymark/postgres-mcp:v0.3.2"
+  default = "nardoarevalywaymark/postgres-mcp:v0.3.3"
 }
 
 variable "port" {
