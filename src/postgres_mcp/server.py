@@ -43,8 +43,9 @@ mcp = FastMCP("postgres-mcp")
 
 # Add health endpoint for HTTP/SSE transports
 @mcp.custom_route(path="/health", methods=["GET"])
-async def health_check():
+async def health_check(request):
     """Health check endpoint for monitoring."""
+    print(request)
     return {"status": "ok"}
 
 # Constants
