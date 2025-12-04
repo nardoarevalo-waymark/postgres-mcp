@@ -248,6 +248,8 @@ async def list_schemas() -> ResponseType:
                     ELSE 'User Schema'
                 END as schema_type
             FROM information_schema.schemata
+            WHERE schema_name NOT LIKE 'pg_temp_%'
+              AND schema_name NOT LIKE 'pg_toast_temp_%'
             ORDER BY schema_type, schema_name
             """
         )
